@@ -1,0 +1,234 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local mouse = player:GetMouse()
+
+-- Speed values
+local sprintSpeed = 1    -- while ability (V key) is active, you run at full (sprint) speed
+local normalSpeed = 0.5  -- when ability ends, you drop to normal speed
+
+-- Animation IDs
+local introAnim = Instance.new("Animation")
+introAnim.AnimationId = "rbxassetid://98606150731314"
+
+local loopAnim = Instance.new("Animation")
+loopAnim.AnimationId = "rbxassetid://74530436512522"
+
+local walkAnim = Instance.new("Animation")
+walkAnim.AnimationId = "rbxassetid://94721495253171"
+
+local runAnim = Instance.new("Animation")
+runAnim.AnimationId = "rbxassetid://93499989310243"
+
+local slashAnim = Instance.new("Animation")
+slashAnim.AnimationId = "rbxassetid://119256819262245"
+
+local m1Anim = Instance.new("Animation")
+m1Anim.AnimationId = "rbxassetid://119256819262245"
+
+-- Tracks and state
+local loopTrack
+local walkTrack
+local runTrack
+local walkRunConnection
+local active = false
+
+-- Helper to stop all ability animations and reset WalkSpeed
+local function stopAbilityAnims()
+	if loopTrack then loopTrack:Stop() end
+	if walkTrack then walkTrack:Stop() end
+	if runTrack then runTrack:Stop() end
+	if walkRunConnection then walkRunConnection:Disconnect() end
+	-- When ability ends, set WalkSpeed to normalSpeed
+	humanoid.WalkSpeed = normalSpeed
+end
+
+-- Check if near a player
+local function getNearbyPlayer(range)
+	for _, target in pairs(Players:GetPlayers()) do
+		if target ~= player and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+			local distance = (character.HumanoidRootPart.Position - target.Character.HumanoidRootPart.Position).Magnitude
+			if distance <= range then
+				return target
+			end
+		end
+	end
+	return nil
+end
+
+-- Behind check: if you're behind the target, the vector from the target to you
+-- will be nearly opposite to the target's LookVector (dot product close to -1).
+local function isBehindTarget(target)
+	local targetHRP = target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	local myHRP = character:FindFirstChild("HumanoidRootPart")
+	if not targetHRP or not myHRP then 
+		return false 
+	end
+	
+	local toAttacker = (myHRP.Position - targetHRP.Position).Unit
+	local targetLook = targetHRP.CFrame.LookVector
+	local dot = toAttacker:Dot(targetLook)
+	print("Slash Attempt - Dot product for", target.Name, ":", dot)
+	return dot < -0.5
+end
+
+-- Ability Activation using the V key
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.V and not active then
+		active = true
+		
+		-- Set WalkSpeed to sprintSpeed (since "I'm not slow")
+		humanoid.WalkSpeed = sprintSpeed
+
+		-- Play intro animation
+		local introTrack = humanoid:LoadAnimation(introAnim)
+		introTrack:Play()
+		introTrack.Stopped:Wait()
+
+		-- Start loop animation
+		loopTrack = humanoid:LoadAnimation(loopAnim)
+		loopTrack.Looped = true
+		loopTrack:Play()
+
+		-- Walk/Run animation logic (using current crouched speed, here sprintSpeed)
+		walkRunConnection = RunService.RenderStepped:Connect(function()
+			if not active then return end
+			local moveDir = humanoid.MoveDirection.Magnitude
+
+			if moveDir > 0 then
+				if not walkTrack or not walkTrack.IsPlaying then
+					if runTrack then runTrack:Stop() end
+					walkTrack = humanoid:LoadAnimation(walkAnim)
+					walkTrack:Play()
+				end
+			else
+				if walkTrack then walkTrack:Stop() end
+				if runTrack then runTrack:Stop() end
+			end
+		end)
+	end
+end)
+
+-- M1 attack to exit ability (resets WalkSpeed to normalSpeed)
+mouse.Button1Down:Connect(function()
+	if active then
+		stopAbilityAnims()
+		local attackTrack = humanoid:LoadAnimation(m1Anim)
+		attackTrack:Play()
+		active = false
+	end
+end)
+
+-- Slash with behind check (exits ability if conditions are not met)
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.E and active then
+		local target = getNearbyPlayer(10)
+		if target and isBehindTarget(target) then
+			local slashTrack = humanoid:LoadAnimation(slashAnim)
+			slashTrack:Play()
+		else
+			stopAbilityAnims()
+			active = false
+		end
+	end
+end)
+
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+-- Ensure the animations are properly set up
+local freezeAnim = Instance.new("Animation")
+freezeAnim.AnimationId = "rbxassetid://117339039533356"
+
+local teleportAnim = Instance.new("Animation")
+teleportAnim.AnimationId = "rbxassetid://84260460113659"
+
+-- Ensure the sounds are properly set up
+local freezeSound = Instance.new("Sound")
+freezeSound.SoundId = "rbxassetid://<freeze_sound_id>"  -- Replace with actual freeze sound ID
+freezeSound.Parent = player:WaitForChild("PlayerGui")  -- Parent to PlayerGui for local playback
+
+local teleportSound = Instance.new("Sound")
+teleportSound.SoundId = "rbxassetid://84260460113659"  -- This is the teleport sound ID
+teleportSound.Volume = 1.7  -- Set the teleport sound volume to 1.7
+teleportSound.Parent = player:WaitForChild("PlayerGui")  -- Parent to PlayerGui for local playback
+
+local abilitySound = Instance.new("Sound")
+abilitySound.SoundId = "rbxassetid://100981628806546"  -- This is the ability sound ID
+abilitySound.Volume = 1.7  -- Set the ability sound volume to 1.7
+abilitySound.Parent = player:WaitForChild("PlayerGui")  -- Parent to PlayerGui for local playback
+
+local savedPosition = nil
+local isFrozen = false
+local canTeleport = false  -- Flag to control teleportation after pressing B
+
+-- Function to play an animation
+local function playAnimation(animation)
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        local animationTrack = animator:LoadAnimation(animation)
+        animationTrack:Play()
+        return animationTrack
+    end
+end
+
+-- Function to freeze the player
+local function freezePlayer()
+    isFrozen = true
+    -- Bind an action that sinks all inputs, effectively freezing the player
+    ContextActionService:BindAction(
+        "FreezeMovement",
+        function() return Enum.ContextActionResult.Sink end,
+        false,
+        unpack(Enum.PlayerActions:GetEnumItems())
+    )
+end
+
+-- Function to unfreeze the player
+local function unfreezePlayer()
+    isFrozen = false
+    -- Unbind the action to allow player movement again
+    ContextActionService:UnbindAction("FreezeMovement")
+end
+
+-- B Key: Save position, play freeze animation and sound, and freeze movement
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.B and not isFrozen then
+        savedPosition = rootPart.Position  -- Save current position
+        freezePlayer()  -- Freeze the player
+        local freezeTrack = playAnimation(freezeAnim)
+        freezeSound:Play()  -- Play the freeze sound
+        abilitySound:Play()  -- Play the ability sound
+        if freezeTrack then
+            freezeTrack.Stopped:Wait()  -- Wait for the animation to finish
+            unfreezePlayer()  -- Unfreeze the player after animation finishes
+        end
+        canTeleport = true  -- Allow teleport after pressing B
+        print("Position saved:", savedPosition)
+    end
+end)
+
+-- N Key: Teleport back to the saved position, play teleport animation and sound, but allow movement after teleport
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.N and savedPosition and canTeleport then
+        rootPart.CFrame = CFrame.new(savedPosition)  -- Teleport to saved position
+        print("Teleported back to:", savedPosition)
+        playAnimation(teleportAnim)  -- Play teleport animation
+        teleportSound:Play()  -- Play teleport sound
+        canTeleport = false  -- Disable teleport until B is pressed again
+    end
+end)
